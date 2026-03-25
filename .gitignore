@@ -12,13 +12,8 @@ env/
 # VS Code settings
 .vscode/
 
-# Database (Jika kamu ingin database local kamu tetap bersifat pribadi/kosong di GitHub)
-*.sqlite3
-*.db
 
 # OS generated files
 .DS_Store
 Thumbs.db
 
-# QR Engine / temporary files (Jika ada output QR yang dihasilkan saat testing)
-qr_engine/output/
