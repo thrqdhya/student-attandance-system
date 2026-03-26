@@ -1,0 +1,71 @@
+# Panduan Setup & Menjalankan Backend QR-Keamanan
+
+Backend ini menggunakan Flask dengan SQLite sebagai database untuk kemudahan setup.
+
+## 1. Prasyarat (Prerequisites)
+Pastikan Anda sudah menginstal Python di komputer Anda (Disarankan versi 3.9 ke atas).
+Cek versi python:
+```bash
+python --version
+```
+
+## 2. Setup Virtual Environment (Opsional tapi Disarankan)
+Gunakan virtual environment agar library tidak bercampur dengan project lain.
+
+### macOS / Linux:
+```bash
+python3 -m venv venv
+source venv/bin/activate
+```
+
+### Windows:
+```bash
+python -m venv venv
+venv\Scripts\activate
+```
+
+## 3. Instalasi Dependensi
+Setelah virtual environment aktif, instal semua library yang diperlukan:
+```bash
+pip install -r requirements.txt
+```
+
+Library utama yang akan terinstal:
+- `Flask`: Framework web utama.
+- `Flask-SQLAlchemy`: ORM untuk mengelola database.
+- `cryptography`: Diperlukan untuk hashing keamanan QR.
+- `python-dotenv`: Untuk membaca konfigurasi dari file `.env`.
+
+## 4. Konfigurasi Environment (.env)
+Pastikan file `.env` sudah ada di folder root dengan isi sebagai berikut:
+```env
+FLASK_APP=app.py
+FLASK_ENV=development
+PORT=5001
+DATABASE_URL=sqlite:///qr_attendance.db
+SECRET_KEY=ini_kunci_rahasia_untuk_hashing_qr_keamanan_123
+QR_EXPIRY_MINUTES=60
+```
+
+## 5. Inisialisasi Database
+Sebelum menjalankan aplikasi untuk pertama kali, buat tabel database dan isi data contoh:
+
+1. Jalankan aplikasi (lihat langkah 6).
+2. Buka browser atau gunakan Postman untuk mengakses endpoint berikut:
+   - **Buat Tabel**: `http://127.0.0.1:5001/api/init-db`
+   - **Isi Data Contoh**: `http://127.0.0.1:5001/api/seed-data`
+
+## 6. Menjalankan Aplikasi
+Jalankan perintah berikut di terminal:
+```bash
+python app.py
+```
+Aplikasi akan berjalan di: `http://127.0.0.1:5001`
+
+## 7. Verifikasi
+Akses `http://127.0.0.1:5001/api/health` untuk memastikan sistem berjalan dengan status "up".
+Akses `http://127.0.0.1:5001/` untuk melihat status koneksi database.
+
+---
+**Catatan Keamanan QR:**
+Token QR di-generate menggunakan hashing SHA-256 yang menggabungkan `lecturer_id`, `timestamp`, dan `SECRET_KEY` sehingga sulit untuk dipalsukan.

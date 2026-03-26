@@ -1,0 +1,291 @@
+{
+	"info": {
+		"_postman_id": "7d9e4a8b-1234-4567-89ab-cdef01234567",
+		"name": "QR Keamanan API - SECURE",
+		"description": "Collection lengkap untuk aplikasi mobile QR Keamanan (Fitur Hashing & Expiry)",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Auth",
+			"item": [
+				{
+					"name": "Student Login",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"nim\": \"12345\",\n    \"password\": \"password123\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/student/login",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"student",
+								"login"
+							]
+						},
+						"description": "Login mahasiswa menggunakan NIM dan Password default 'password123'."
+					},
+					"response": []
+				},
+				{
+					"name": "Lecturer Login",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"username\": \"irfan\",\n    \"password\": \"admin123\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/lecturer/login",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"lecturer",
+								"login"
+							]
+						},
+						"description": "Login dosen menggunakan Username 'irfan' dan Password 'admin123'."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Student Features",
+			"item": [
+				{
+					"name": "Get Profile",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/student/12345/profile",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"student",
+								"12345",
+								"profile"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Attendance History",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/student/12345/history",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"student",
+								"12345",
+								"history"
+							]
+						},
+						"description": "Melihat daftar semua sesi yang sudah dihadiri mahasiswa."
+					},
+					"response": []
+				},
+				{
+					"name": "Scan QR (Attendance)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"nim\": \"12345\",\n    \"token_qr\": \"HASH_TOKEN_DARI_CREATE_SESSION\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/attendance/scan",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"attendance",
+								"scan"
+							]
+						},
+						"description": "Mencatat kehadiran. Masukkan hash token yang didapat dari endpoint Create Session. Token berlaku 60 menit."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Lecturer Features",
+			"item": [
+				{
+					"name": "Get Lecturer Sessions",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/lecturer/1/sessions",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"lecturer",
+								"1",
+								"sessions"
+							]
+						},
+						"description": "Melihat semua sesi yang pernah dibuat oleh dosen ID 1. Menampilkan status 'is_expired'."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Session Attendance Report",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/session/1/attendance",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"session",
+								"1",
+								"attendance"
+							]
+						},
+						"description": "Melihat detail siapa saja mahasiswa yang hadir di Sesi ID 1."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Session (Generate Secure QR)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"lecturer_id\": 1\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/session/create",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"session",
+								"create"
+							]
+						},
+						"description": "Membuat sesi baru dengan token SHA-256 yang aman. Token berlaku selama 60 menit."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "System",
+			"item": [
+				{
+					"name": "Reset & Initialize Database",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/init-db",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"init-db"
+							]
+						},
+						"description": "MENGHAPUS SEMUA TABEL LAMA dan membuat skema baru yang mendukung hashing/expiry. Jalankan ini jika Anda baru saja melakukan update kode backend."
+					},
+					"response": []
+				},
+				{
+					"name": "Seed Sample Data",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/seed-data",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"seed-data"
+							]
+						},
+						"description": "Mengisi data awal mahasiswa (Budi, Ani) dan dosen (Irfan, Maya)."
+					},
+					"response": []
+				},
+				{
+					"name": "Health Check",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/health",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"health"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:5001"
+		}
+	]
+}
