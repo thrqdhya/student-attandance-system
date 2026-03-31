@@ -18,7 +18,7 @@ def create_session_logic(lecturer_id):
 
     token_qr = generate_secure_token(lecturer_id)
 
-    expiry_minutes = current_app.config.get('QR_EXPIRY_MINUTES', 60)
+    expiry_minutes = current_app.config.get('QR_EXPIRY_MINUTES', 5)
     expires_at = datetime.utcnow() + timedelta(minutes=expiry_minutes)
 
     new_session = Session(
