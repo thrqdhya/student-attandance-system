@@ -1,22 +1,30 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from sqlalchemy import text
+from datetime import datetime, timedelta
 
 from database.models import db, Student, Lecturer, Session, AttendanceRecord
 from backend.student import validate_nim
 from backend.lecturer import create_session_logic
 from backend.attendance import save_attendance_logic
+from qr_engine.token_generator import generate_token, generate_qr
 
 app = Flask(__name__)
 CORS(app)
 
-# CONFIG
+# 🔥 CONFIG (HAFTA 4 FIX)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///qr_attendance.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = 'default_secret'
-app.config['QR_EXPIRY_MINUTES'] = 60
+
+app.config['QR_EXPIRY_MINUTES'] = 5   # 🔥 FIX (5 menit)
+app.config['TOKEN_INTERVAL'] = 30     # 🔥 30 detik
 
 db.init_app(app)
+
+# ---------------- INIT DB ----------------
+with app.app_context():
+    db.create_all()
 
 # ---------------- STUDENT ----------------
 
@@ -32,7 +40,7 @@ def student_login():
     if student:
         return jsonify({"status": "success", "data": student.to_dict()})
     else:
-        return jsonify({"status": "error", "message": "NIM not found"}), 404
+        return jsonify({"status": "error", "message": "Student not found"}), 404
 
 
 @app.route('/api/student/<nim>/profile', methods=['GET'])
@@ -52,6 +60,7 @@ def get_student_history(nim):
 
     history = [r.to_dict() for r in student.attendances]
     return jsonify({"status": "success", "data": history})
+
 
 # ---------------- LECTURER ----------------
 
@@ -73,30 +82,54 @@ def lecturer_login():
 def get_sessions(lecturer_id):
     lecturer = Lecturer.query.get(lecturer_id)
     if not lecturer:
-        return jsonify({"status": "error"}), 404
+        return jsonify({"status": "error", "message": "Lecturer not found"}), 404
 
     sessions = [s.to_dict() for s in lecturer.sessions]
     return jsonify({"status": "success", "data": sessions})
 
 
+# 🔥 CREATE SESSION + QR (HAFTA 4 CORE)
 @app.route('/api/session/create', methods=['POST'])
 def create_session():
     data = request.get_json()
     lecturer_id = data.get('lecturer_id')
 
-    session, error = create_session_logic(lecturer_id)
+    if not lecturer_id:
+        return jsonify({"status": "error", "message": "lecturer_id required"}), 400
 
-    if error:
-        return jsonify({"status": "error", "message": error}), 400
+    lecturer = Lecturer.query.get(lecturer_id)
+    if not lecturer:
+        return jsonify({"status": "error", "message": "Lecturer not found"}), 404
 
-    return jsonify({"status": "success", "data": session.to_dict()})
+    # 🔥 generate token + QR
+    token = generate_token()
+    qr_file = generate_qr(token)
+
+    # 🔥 set expiry 5 menit
+    expires_at = datetime.utcnow() + timedelta(minutes=5)
+
+    session = Session(
+        lecturer_id=lecturer_id,
+        token_qr=token,
+        expires_at=expires_at
+    )
+
+    db.session.add(session)
+    db.session.commit()
+
+    return jsonify({
+        "status": "success",
+        "data": session.to_dict(),
+        "qr_file": qr_file,
+        "message": "Session started (5 minutes)"
+    })
 
 
 @app.route('/api/session/<int:session_id>/attendance', methods=['GET'])
 def get_session_attendance(session_id):
     session = Session.query.get(session_id)
     if not session:
-        return jsonify({"status": "error"}), 404
+        return jsonify({"status": "error", "message": "Session not found"}), 404
 
     attendance = [r.to_dict() for r in session.attendances]
 
@@ -108,6 +141,7 @@ def get_session_attendance(session_id):
         }
     })
 
+
 # ---------------- ATTENDANCE ----------------
 
 @app.route('/api/attendance/scan', methods=['POST'])
@@ -116,12 +150,23 @@ def scan_attendance():
     nim = data.get('nim')
     token = data.get('token_qr')
 
+    if not nim or not token:
+        return jsonify({
+            "status": "error",
+            "message": "nim and token_qr required"
+        }), 400
+
     record, error = save_attendance_logic(nim, token)
 
     if error:
         return jsonify({"status": "error", "message": error}), 400
 
-    return jsonify({"status": "success", "data": record.to_dict()})
+    return jsonify({
+        "status": "success",
+        "data": record.to_dict(),
+        "message": "Attendance recorded (PRESENT)"
+    })
+
 
 # ---------------- UTIL ----------------
 
