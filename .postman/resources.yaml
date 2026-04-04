@@ -1,0 +1,7 @@
+# Use this workspace to collaborate
+workspace:
+  id: 4f1b0bff-3de3-42e2-8b7a-06e75537ac32
+
+localResources:
+  collections:
+    - ..\qr_keamanan_postman.json
