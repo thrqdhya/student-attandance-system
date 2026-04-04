@@ -5,20 +5,18 @@ from datetime import datetime, timedelta
 
 from database.models import db, Student, Lecturer, Session, AttendanceRecord
 from backend.student import validate_nim
-from backend.lecturer import create_session_logic
-from backend.attendance import save_attendance_logic
 from qr_engine.token_generator import generate_token, generate_qr
 
 app = Flask(__name__)
 CORS(app)
 
-# 🔥 CONFIG (HAFTA 4 FIX)
+# 🔥 CONFIG
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///qr_attendance.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = 'default_secret'
 
-app.config['QR_EXPIRY_MINUTES'] = 5   # 🔥 FIX (5 menit)
-app.config['TOKEN_INTERVAL'] = 30     # 🔥 30 detik
+app.config['QR_EXPIRY_MINUTES'] = 5   # 5 menit
+app.config['TOKEN_INTERVAL'] = 30
 
 db.init_app(app)
 
@@ -88,7 +86,7 @@ def get_sessions(lecturer_id):
     return jsonify({"status": "success", "data": sessions})
 
 
-# 🔥 CREATE SESSION + QR (HAFTA 4 CORE)
+# 🔥 CREATE SESSION + QR
 @app.route('/api/session/create', methods=['POST'])
 def create_session():
     data = request.get_json()
@@ -105,8 +103,8 @@ def create_session():
     token = generate_token()
     qr_file = generate_qr(token)
 
-    # 🔥 set expiry 5 menit
-    expires_at = datetime.utcnow() + timedelta(minutes=5)
+    # 🔥 expiry 5 menit
+    expires_at = datetime.utcnow() + timedelta(minutes=app.config['QR_EXPIRY_MINUTES'])
 
     session = Session(
         lecturer_id=lecturer_id,
@@ -142,7 +140,7 @@ def get_session_attendance(session_id):
     })
 
 
-# ---------------- ATTENDANCE ----------------
+# ---------------- ATTENDANCE (🔥 HAFTA 5-6 CORE FIX) ----------------
 
 @app.route('/api/attendance/scan', methods=['POST'])
 def scan_attendance():
@@ -156,14 +154,46 @@ def scan_attendance():
             "message": "nim and token_qr required"
         }), 400
 
-    record, error = save_attendance_logic(nim, token)
+    # 🔥 1. CEK STUDENT
+    student = Student.query.get(nim)
+    if not student:
+        return jsonify({"status": "error", "message": "Student not found"}), 404
 
-    if error:
-        return jsonify({"status": "error", "message": error}), 400
+    # 🔥 2. CEK SESSION (TOKEN VALID?)
+    session = Session.query.filter_by(token_qr=token).first()
+    if not session:
+        return jsonify({"status": "error", "message": "Invalid QR Token"}), 400
+
+    # 🔥 3. CEK EXPIRED
+    if datetime.utcnow() > session.expires_at:
+        return jsonify({"status": "error", "message": "QR Code Expired"}), 400
+
+    # 🔥 4. CEK SUDAH ABSEN ATAU BELUM
+    existing = AttendanceRecord.query.filter_by(
+        student_id=nim,
+        session_id=session.id
+    ).first()
+
+    if existing:
+        return jsonify({
+            "status": "error",
+            "message": "You already scanned this QR"
+        }), 400
+
+    # 🔥 5. SAVE ATTENDANCE
+    attendance = AttendanceRecord(
+        student_id=nim,
+        session_id=session.id,
+        status="PRESENT",
+        timestamp=datetime.utcnow()
+    )
+
+    db.session.add(attendance)
+    db.session.commit()
 
     return jsonify({
         "status": "success",
-        "data": record.to_dict(),
+        "data": attendance.to_dict(),
         "message": "Attendance recorded (PRESENT)"
     })
 
