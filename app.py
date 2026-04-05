@@ -3,7 +3,9 @@ from flask_cors import CORS
 from sqlalchemy import text
 from datetime import datetime, timedelta
 
-from database.models import db, Student, Lecturer, Session, AttendanceRecord
+# 🔥 TAMBAH QRToken
+from database.models import db, Student, Lecturer, Session, AttendanceRecord, QRToken
+
 from backend.student import validate_nim
 from qr_engine.token_generator import generate_token, generate_qr
 
@@ -15,7 +17,7 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///qr_attendance.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = 'default_secret'
 
-app.config['QR_EXPIRY_MINUTES'] = 5   # 5 menit
+app.config['QR_EXPIRY_MINUTES'] = 5
 app.config['TOKEN_INTERVAL'] = 30
 
 db.init_app(app)
@@ -86,7 +88,9 @@ def get_sessions(lecturer_id):
     return jsonify({"status": "success", "data": sessions})
 
 
-# 🔥 CREATE SESSION + QR
+# ---------------- SESSION ----------------
+
+# 🔥 CREATE SESSION + TOKEN PERTAMA
 @app.route('/api/session/create', methods=['POST'])
 def create_session():
     data = request.get_json()
@@ -99,27 +103,61 @@ def create_session():
     if not lecturer:
         return jsonify({"status": "error", "message": "Lecturer not found"}), 404
 
-    # 🔥 generate token + QR
-    token = generate_token()
-    qr_file = generate_qr(token)
-
-    # 🔥 expiry 5 menit
     expires_at = datetime.utcnow() + timedelta(minutes=app.config['QR_EXPIRY_MINUTES'])
 
     session = Session(
         lecturer_id=lecturer_id,
-        token_qr=token,
         expires_at=expires_at
     )
 
     db.session.add(session)
     db.session.commit()
 
+    # 🔥 TOKEN PERTAMA
+    token_str = generate_token()
+    qr_file = generate_qr(token_str)
+
+    token = QRToken(
+        token=token_str,
+        session_id=session.session_id,
+        expires_at=datetime.utcnow() + timedelta(seconds=app.config['TOKEN_INTERVAL'])
+    )
+
+    db.session.add(token)
+    db.session.commit()
+
     return jsonify({
         "status": "success",
-        "data": session.to_dict(),
+        "session_id": session.session_id,
         "qr_file": qr_file,
-        "message": "Session started (5 minutes)"
+        "message": "Session started"
+    })
+
+
+# 🔥 REFRESH QR (DINAMIS)
+@app.route('/api/session/<int:session_id>/refresh-qr', methods=['GET'])
+def refresh_qr(session_id):
+    session = Session.query.get(session_id)
+
+    if not session or not session.is_active():
+        return jsonify({"status": "error", "message": "Session expired"}), 400
+
+    token_str = generate_token()
+    qr_file = generate_qr(token_str)
+
+    new_token = QRToken(
+        token=token_str,
+        session_id=session_id,
+        expires_at=datetime.utcnow() + timedelta(seconds=app.config['TOKEN_INTERVAL'])
+    )
+
+    db.session.add(new_token)
+    db.session.commit()
+
+    return jsonify({
+        "status": "success",
+        "token": token_str,
+        "qr_file": qr_file
     })
 
 
@@ -140,50 +178,56 @@ def get_session_attendance(session_id):
     })
 
 
-# ---------------- ATTENDANCE (🔥 HAFTA 5-6 CORE FIX) ----------------
+# ---------------- ATTENDANCE ----------------
 
 @app.route('/api/attendance/scan', methods=['POST'])
 def scan_attendance():
     data = request.get_json()
     nim = data.get('nim')
-    token = data.get('token_qr')
+    token_str = data.get('token_qr')
 
-    if not nim or not token:
+    if not nim or not token_str:
         return jsonify({
             "status": "error",
             "message": "nim and token_qr required"
         }), 400
 
-    # 🔥 1. CEK STUDENT
+    # 🔥 1. STUDENT
     student = Student.query.get(nim)
     if not student:
         return jsonify({"status": "error", "message": "Student not found"}), 404
 
-    # 🔥 2. CEK SESSION (TOKEN VALID?)
-    session = Session.query.filter_by(token_qr=token).first()
-    if not session:
-        return jsonify({"status": "error", "message": "Invalid QR Token"}), 400
+    # 🔥 2. TOKEN VALIDASI (ANTI SHARE)
+    qr_token = QRToken.query.filter_by(token=token_str).first()
 
-    # 🔥 3. CEK EXPIRED
-    if datetime.utcnow() > session.expires_at:
-        return jsonify({"status": "error", "message": "QR Code Expired"}), 400
+    if not qr_token:
+        return jsonify({"status": "error", "message": "Invalid QR"}), 400
 
-    # 🔥 4. CEK SUDAH ABSEN ATAU BELUM
+    if not qr_token.is_valid():
+        return jsonify({"status": "error", "message": "QR expired"}), 400
+
+    # 🔥 3. SESSION VALID
+    session = Session.query.get(qr_token.session_id)
+
+    if not session or not session.is_active():
+        return jsonify({"status": "error", "message": "Session expired"}), 400
+
+    # 🔥 4. CEK SUDAH ABSEN
     existing = AttendanceRecord.query.filter_by(
-        student_id=nim,
-        session_id=session.id
+        nim=nim,
+        session_id=session.session_id
     ).first()
 
     if existing:
         return jsonify({
             "status": "error",
-            "message": "You already scanned this QR"
+            "message": "Already attended"
         }), 400
 
-    # 🔥 5. SAVE ATTENDANCE
+    # 🔥 5. SAVE
     attendance = AttendanceRecord(
-        student_id=nim,
-        session_id=session.id,
+        nim=nim,
+        session_id=session.session_id,
         status="PRESENT",
         timestamp=datetime.utcnow()
     )
@@ -194,11 +238,30 @@ def scan_attendance():
     return jsonify({
         "status": "success",
         "data": attendance.to_dict(),
-        "message": "Attendance recorded (PRESENT)"
+        "message": "Attendance recorded"
     })
 
 
 # ---------------- UTIL ----------------
+
+@app.route('/api/init-db')
+def init_db():
+    db.drop_all()
+    db.create_all()
+    return jsonify({"status": "success"})
+
+
+@app.route('/')
+def index():
+    try:
+        db.session.execute(text('SELECT 1'))
+        return jsonify({"status": "connected"})
+    except:
+        return jsonify({"status": "error"})
+
+
+if __name__ == '__main__':
+    app.run(debug=True, host="0.0.0.0", port=5001)
 
 @app.route('/api/seed-data')
 def seed_data():
@@ -219,23 +282,7 @@ def seed_data():
     except Exception as e:
         db.session.rollback()
         return jsonify({"status": "error", "message": str(e)})
-
-
-@app.route('/api/init-db')
-def init_db():
-    db.drop_all()
-    db.create_all()
-    return jsonify({"status": "success"})
-
-
-@app.route('/')
-def index():
-    try:
-        db.session.execute(text('SELECT 1'))
-        return jsonify({"status": "connected"})
-    except:
-        return jsonify({"status": "error"})
-
-
-if __name__ == '__main__':
-    app.run(debug=True, port=5001)
+    
+@app.route('/test')
+def test():
+    return "OK"

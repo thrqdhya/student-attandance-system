@@ -48,14 +48,17 @@ class Session(db.Model):
     tanggal = db.Column(db.DateTime, default=datetime.utcnow)
 
     expires_at = db.Column(db.DateTime, nullable=False)
+
     lecturer_id = db.Column(
         db.Integer,
         db.ForeignKey('lecturers.lecturer_id'),
         nullable=False
     )
 
-    token_qr = db.Column(db.String(255), unique=True, nullable=False)
+    # ❌ HAPUS token_qr dari sini
+    # token sekarang dipisah ke table QRToken
 
+    tokens = db.relationship('QRToken', backref='session', lazy=True)
     attendances = db.relationship('AttendanceRecord', backref='session', lazy=True)
 
     def is_active(self):
@@ -68,8 +71,36 @@ class Session(db.Model):
             "expires_at": self.expires_at.strftime('%Y-%m-%d %H:%M:%S'),
             "is_active": self.is_active(),
             "lecturer_id": self.lecturer_id,
-            "token_qr": self.token_qr,
             "total_attendance": len(self.attendances)
+        }
+
+
+# 🔥 🔹 QR TOKEN (INI KUNCI ANTI SHARE)
+class QRToken(db.Model):
+    __tablename__ = 'qr_tokens'
+
+    token_id = db.Column(db.Integer, primary_key=True)
+
+    token = db.Column(db.String(255), unique=True, nullable=False)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    expires_at = db.Column(db.DateTime, nullable=False)
+
+    session_id = db.Column(
+        db.Integer,
+        db.ForeignKey('sessions.session_id'),
+        nullable=False
+    )
+
+    def is_valid(self):
+        return datetime.utcnow() <= self.expires_at
+
+    def to_dict(self):
+        return {
+            "token": self.token,
+            "created_at": self.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+            "expires_at": self.expires_at.strftime('%Y-%m-%d %H:%M:%S'),
+            "session_id": self.session_id
         }
 
 
@@ -91,11 +122,12 @@ class AttendanceRecord(db.Model):
         nullable=False
     )
 
-    # 🔥 UPGRADE
-    status = db.Column(db.String(20), default="PRESENT")  # HADIR → PRESENT
+    # 🔥 status
+    status = db.Column(db.String(20), default="PRESENT")
+
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
 
-    # 🔥 CEGah double attendance
+    # 🔥 cegah double attendance
     __table_args__ = (
         db.UniqueConstraint('nim', 'session_id', name='unique_attendance'),
     )
