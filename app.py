@@ -260,9 +260,6 @@ def index():
         return jsonify({"status": "error"})
 
 
-if __name__ == '__main__':
-    app.run(debug=True, host="0.0.0.0", port=5001)
-
 @app.route('/api/seed-data')
 def seed_data():
     try:
@@ -282,7 +279,13 @@ def seed_data():
     except Exception as e:
         db.session.rollback()
         return jsonify({"status": "error", "message": str(e)})
-    
+
+
 @app.route('/test')
 def test():
     return "OK"
+
+
+# 🔥 INI HARUS PALING BAWAH
+if __name__ == '__main__':
+    app.run(debug=True, host="0.0.0.0", port=5001)
