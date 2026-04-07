@@ -281,10 +281,6 @@ def seed_data():
         return jsonify({"status": "error", "message": str(e)})
 
 
-@app.route('/test')
-def test():
-    return "OK"
-
 
 # 🔥 INI HARUS PALING BAWAH
 if __name__ == '__main__':
