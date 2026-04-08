@@ -265,8 +265,8 @@ def seed_data():
     try:
         if not Student.query.first():
             db.session.add_all([
-                Student(nim="12345", nama="Budi"),
-                Student(nim="67890", nama="Ani")
+                Student(nim="23670708027", nama="Mutia Apriani"),
+                Student(nim="22670708061", nama="Thoriq Dhiya")
             ])
 
         if not Lecturer.query.first():
