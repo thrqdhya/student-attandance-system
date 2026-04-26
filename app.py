@@ -1,9 +1,11 @@
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_file, render_template_string
 from flask_cors import CORS
 from sqlalchemy import text
 from datetime import datetime, timedelta
 import threading
 import time
+import qrcode
+from io import BytesIO
 
 from database.models import (
     db, Student, Lecturer, Session,
@@ -29,6 +31,100 @@ db.init_app(app)
 # ================= INIT DB =================
 with app.app_context():
     db.create_all()
+
+
+# =========================================================
+# ================= QR LIVE (IMPORTANT) ====================
+# =========================================================
+
+@app.route('/qr-live')
+def qr_live():
+    lecturer = Lecturer.query.first()
+    course = Course.query.first()
+
+    if not lecturer or not course:
+        return "No data"
+
+    # ambil session terakhir atau buat baru
+    session = Session.query.order_by(Session.session_id.desc()).first()
+
+    if not session or not session.is_active():
+        session = Session(
+            lecturer_id=lecturer.lecturer_id,
+            course_id=course.course_id,
+            expires_at=datetime.utcnow() + timedelta(minutes=5)
+        )
+        db.session.add(session)
+        db.session.commit()
+
+    # generate token baru tiap request
+    token_str = generate_token()
+
+    qr_token = QRToken(
+        token=token_str,
+        session_id=session.session_id,
+        expires_at=datetime.utcnow() + timedelta(seconds=30)
+    )
+
+    db.session.add(qr_token)
+    db.session.commit()
+
+    # generate QR image
+    img = qrcode.make(token_str)
+    buf = BytesIO()
+    img.save(buf, format='PNG')
+    buf.seek(0)
+
+    return send_file(buf, mimetype='image/png')
+
+
+# =========================================================
+# ================= DOSEN PAGE =============================
+# =========================================================
+
+@app.route('/start')
+def start_page():
+    return render_template_string("""
+    <html>
+    <head>
+        <title>QR Attendance</title>
+    </head>
+    <body style="text-align:center; font-family:sans-serif;">
+        <h2>Scan QR untuk Absensi</h2>
+
+        <img id="qr" src="/qr-live" width="300"><br><br>
+
+        <h3 id="countdown">Sisa waktu: 300 detik</h3>
+
+        <script>
+            let totalTime = 300;
+            let interval = 30;
+            let remaining = totalTime;
+
+            function updateQR() {
+                document.getElementById("qr").src = "/qr-live?" + new Date().getTime();
+            }
+
+            function countdown() {
+                if (remaining <= 0) {
+                    remaining = totalTime;
+                }
+
+                document.getElementById("countdown").innerText =
+                    "Sisa waktu: " + remaining + " detik";
+
+                remaining--;
+
+                if (remaining % interval === 0) {
+                    updateQR();
+                }
+            }
+
+            setInterval(countdown, 1000);
+        </script>
+    </body>
+    </html>
+    """)
 
 # =========================================================
 # ================= AUTO QR BACKGROUND =====================
@@ -265,7 +361,6 @@ def scan_attendance():
     attendance = AttendanceRecord(
         nim=nim,
         session_id=session.session_id,
-        token=token_str,
         timestamp=datetime.utcnow()
     )
 
