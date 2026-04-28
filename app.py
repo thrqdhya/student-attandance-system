@@ -13,7 +13,7 @@ from database.models import (
     Course, StudentCourse
 )
 
-from qr_engine.token_generator import generate_token, generate_qr
+from qr_engine.token_generator import generate_token, generate_qr, validate_token
 
 app = Flask(__name__)
 CORS(app)
@@ -310,21 +310,64 @@ def scan_attendance():
 
     nim = data.get('nim')
     token_str = data.get('token_qr')
+    device_id = data.get('device_id')
 
-    if not nim or not token_str:
-        return jsonify({"status": "error"}), 400
+    # =========================
+    # 📥 VALIDASI INPUT
+    # =========================
+    if not nim or not token_str or not device_id:
+        return jsonify({
+            "status": "error",
+            "message": "NIM, token, and device_id required"
+        }), 400
 
     student = Student.query.get(nim)
     if not student:
         return jsonify({"status": "error"}), 404
 
-    qr_token = QRToken.query.filter_by(token=token_str).first()
+    # =========================
+    # 📱 DEVICE LOCK
+    # =========================
+    if not student.device_id:
+        # pertama kali → simpan device
+        student.device_id = device_id
+        db.session.commit()
 
-    if not qr_token or not qr_token.is_valid():
+    elif student.device_id != device_id:
+        # device beda → kemungkinan curang
         return jsonify({
             "status": "error",
-            "message": "Invalid / expired QR"
+            "message": "Device mismatch (use your registered device)"
+        }), 403
+
+    # =========================
+    # 🔐 VALIDASI QR (COMBINED)
+    # =========================
+
+    qr_token = QRToken.query.filter_by(token=token_str).first()
+
+    if not qr_token:
+        return jsonify({
+            "status": "error",
+            "message": "QR not found"
         }), 400
+
+    if not qr_token.is_valid():
+        return jsonify({
+            "status": "error",
+            "message": "QR expired (DB)"
+        }), 400
+
+    from qr_engine.token_generator import validate_token
+    if not validate_token(token_str):
+        return jsonify({
+            "status": "error",
+            "message": "QR invalid (tampered / outdated)"
+        }), 400
+
+    # =========================
+    # 📚 VALIDASI SESSION
+    # =========================
 
     session = Session.query.get(qr_token.session_id)
 
@@ -334,7 +377,10 @@ def scan_attendance():
             "message": "Session expired"
         }), 400
 
-    # VALIDASI COURSE
+    # =========================
+    # 🎓 VALIDASI COURSE
+    # =========================
+
     student_course = StudentCourse.query.filter_by(
         student_nim=nim,
         course_id=session.course_id
@@ -346,7 +392,10 @@ def scan_attendance():
             "message": "Not enrolled"
         }), 403
 
-    # CEK DOUBLE ABSEN
+    # =========================
+    # 🚫 CEK DOUBLE ABSEN
+    # =========================
+
     existing = AttendanceRecord.query.filter_by(
         nim=nim,
         session_id=session.session_id
@@ -357,6 +406,10 @@ def scan_attendance():
             "status": "error",
             "message": "Already attended"
         }), 400
+
+    # =========================
+    # ✅ SIMPAN ABSENSI
+    # =========================
 
     attendance = AttendanceRecord(
         nim=nim,
@@ -371,7 +424,6 @@ def scan_attendance():
         "status": "success",
         "message": "Attendance recorded"
     })
-
 
 # =========================================================
 # ================= LIVE DATA =================

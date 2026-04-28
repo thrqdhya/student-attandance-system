@@ -18,6 +18,8 @@ class Student(db.Model):
 
     password = db.Column(db.String(100), default='password123')
 
+    device_id = db.Column(db.String(100), nullable=True)
+
     attendances = db.relationship('AttendanceRecord', backref='student', lazy=True)
     courses = db.relationship('StudentCourse', backref='student', lazy=True)
 

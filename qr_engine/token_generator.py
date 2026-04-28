@@ -52,7 +52,8 @@ def validate_token(token):
         token_time = datetime.strptime(token_time_str, "%Y%m%d%H%M%S")
 
         # 🔥 cek umur token (30 detik)
-        if (datetime.utcnow() - token_time).total_seconds() > INTERVAL:
+        TOLERANCE = 10 #detik
+        if (datetime.utcnow() - token_time).total_seconds() > INTERVAL + TOLERANCE:
             return False
 
         # 🔥 cek hash
