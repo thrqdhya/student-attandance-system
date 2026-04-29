@@ -1,0 +1,41 @@
+CARA PENGGUNAAN SISTEM ABSENSI (FASTAPI)
+========================================
+
+1. Persiapan Lingkungan:
+   - Pastikan Python sudah terinstal.
+   - Instal library yang dibutuhkan dengan menjalankan:
+     pip install -r requirements.txt
+
+2. Menjalankan Sistem:
+   - Langkah 1: Jalankan Server (API) di terminal pertama:
+     uvicorn main:app --reload
+   - Langkah 2: Jalankan Aplikasi GUI di terminal kedua:
+     python gui.py
+
+3. Alur Penggunaan (GUI):
+   - Pilih "Mode Dosen" untuk membuka sesi absensi (Password: admin123).
+   - Pilih "Mode Mahasiswa" untuk registrasi dan melakukan absensi.
+   - Mahasiswa akan otomatis login setelah registrasi pertama kali.
+
+4. Akses Dokumentasi:
+   - Dokumentasi interaktif (Swagger UI): http://127.0.0.1:8000/docs
+   - Dokumentasi teks (Indo): api_docs.md
+   - Dokumentasi teks (English): api_docs_en.md
+
+4. Alur Penggunaan Dosen:
+   - Login menggunakan password "admin123" pada endpoint /lecturer/login.
+   - Buka sesi absensi pada endpoint /lecturer/start-session.
+   - Pantau status dan QR Code pada endpoint /lecturer/status.
+   - QR Code akan berubah secara otomatis setiap 30 detik.
+   - Lihat daftar mahasiswa yang sudah absen di /lecturer/attendance-list.
+
+5. Alur Penggunaan Mahasiswa:
+   - Registrasi NIM dan Nama pada endpoint /student/register (hanya sekali).
+   - Scan QR Code yang ditampilkan dosen.
+   - Kirim data absensi (NIM, Nama, Token) ke endpoint /submit-attendance.
+   - Sistem akan memvalidasi token dan memastikan tidak ada NIM ganda dalam satu sesi.
+
+6. Penyimpanan Data:
+   - Data absensi disimpan di: attendance.csv
+   - Data mahasiswa terdaftar disimpan di: students.csv
+   - Gunakan endpoint /lecturer/reset-data jika ingin menghapus semua data.

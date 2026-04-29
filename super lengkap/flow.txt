@@ -1,0 +1,69 @@
+======================================================
+ALUR SISTEM ABSENSI BERBASIS QR CODE DINAMIS (OFFLINE)
+======================================================
+
+Sistem ini terbagi menjadi 3 komponen utama:
+1. Backend (FastAPI): Pusat logika, keamanan, penyimpanan data, dan generator Token/QR Code.
+2. Frontend Dosen (Tkinter GUI): Antarmuka layar untuk menampilkan QR Code dan status absensi.
+3. Frontend Mahasiswa (Flutter/Tkinter): Antarmuka bagi mahasiswa untuk memindai (scan) QR Code.
+
+------------------------------------------------------
+A. ALUR PEMBUATAN SESI & QR CODE (DOSEN <-> BACKEND)
+------------------------------------------------------
+1. LOGIN: 
+   - Dosen memasukkan password ("admin123") di aplikasi GUI.
+   - Backend memvalidasi password dan mengizinkan masuk ke Dashboard.
+
+2. MEMULAI SESI ABSENSI:
+   - Dosen menekan tombol "Start Attendance Session".
+   - Backend membuat ID Sesi baru, mencatat waktu mulai, dan mengaktifkan timer 5 menit.
+   - Backend menghasilkan sebuah "Token Awal" dengan format `ATTEND-YYYYMMDD-HHMMSS-RAND`.
+
+3. PEMANTAUAN (POLLING) & PEMBUATAN GAMBAR QR:
+   - Setiap 2 detik, aplikasi GUI Dosen melakukan request ke Backend untuk meminta status terbaru.
+   - Backend mengecek waktu. Jika waktu sudah berjalan 30 detik sejak token terakhir dibuat, Backend akan merotasi token:
+     > Token Lama disimpan sebagai "Previous Token".
+     > Token Baru ("Current Token") di-generate ulang secara dinamis.
+   - Backend mengubah "Current Token" menjadi sebuah GAMBAR QR CODE.
+   - Gambar QR Code tersebut diubah ke dalam format teks panjang (Base64).
+   - Backend merespons ke GUI Dosen dengan:
+     [ Status Sesi, Sisa Waktu, String Current Token, Gambar QR (Base64) ]
+
+4. PENAMPILAN DI LAYAR DOSEN:
+   - GUI Dosen menerima data dari Backend.
+   - String gambar Base64 diubah kembali (decode) menjadi bentuk gambar visual.
+   - GUI menampilkan Gambar QR tersebut di layar secara utuh beserta timer sisa waktu.
+
+------------------------------------------------------
+B. ALUR PENGISIAN ABSENSI (MAHASISWA <-> BACKEND)
+------------------------------------------------------
+1. REGISTRASI & AUTO-LOGIN:
+   - Mahasiswa baru pertama kali membuka aplikasi.
+   - Mahasiswa memasukkan NIM dan Nama lengkap.
+   - Backend memverifikasi bahwa NIM tersebut belum pernah didaftarkan. Jika valid, data disimpan ke MySQL & CSV.
+   - Aplikasi Mahasiswa menyimpan NIM & Nama tersebut ke penyimpanan lokal HP/Laptop.
+   - Pada pembukaan aplikasi selanjutnya, aplikasi tidak meminta login ulang (Auto-login membaca data lokal).
+
+2. SCAN QR CODE:
+   - Mahasiswa membuka fitur Scanner.
+   - Kamera memindai Gambar QR yang ada di layar proyektor (layar Dosen).
+   - Scanner berhasil membaca gambar dan mendapatkan sebuah Teks Token (contoh: `ATTEND-20260210-083000-X7B9`).
+
+3. PENGIRIMAN DATA:
+   - Aplikasi Mahasiswa secara otomatis mengirimkan sebuah request ke Backend berisi:
+     [ NIM, Nama, Teks Token yang didapat ]
+
+4. VALIDASI KEAMANAN DI BACKEND:
+   - Cek Sesi: Apakah sesi absensi masih terbuka (belum lewat 5 menit)?
+   - Cek Token: Apakah token yang dikirim valid? (Backend mentoleransi Current Token dan Previous Token untuk mencegah error saat proses pergantian QR di detik ke-30).
+   - Cek Identitas: Apakah NIM tersebut terdaftar di database?
+   - Cek Kesesuaian Nama: Apakah Nama yang dikirim sama dengan Nama yang terdaftar di database untuk NIM tersebut? (Anti penitipan NIM).
+   - Cek Duplikasi: Apakah NIM ini sudah pernah absen pada sesi yang sama ini?
+
+5. PENYIMPANAN DATA:
+   - Jika semua validasi LULUS, Backend menyimpan kehadiran tersebut ke tabel MySQL dan file `attendance.csv` (sebagai backup offline).
+   - Backend memberikan pesan "Success" ke aplikasi Mahasiswa.
+
+6. PEMBARUAN LAYAR DOSEN:
+   - Pada siklus 2-detik berikutnya (Polling dari GUI Dosen), Backend mengirimkan daftar kehadiran terbaru.
+   - Layar Dosen secara otomatis (real-time) memperbarui tabel, dan nama Mahasiswa tersebut muncul di daftar "Sudah Absen".

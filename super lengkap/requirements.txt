@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+qrcode
+pillow
+python-multipart
+pydantic
+mysql-connector-python
+requests
