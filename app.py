@@ -1,3 +1,7 @@
+from flask import send_file
+from backend.lecturer import export_attendance_to_excel
+from backend.student import get_student_stats_logic
+from backend.lecturer import get_lecturer_stats_logic
 from flask import Flask, jsonify, request, send_file, render_template_string
 from flask_cors import CORS
 from sqlalchemy import text
@@ -231,7 +235,15 @@ def lecturer_login():
     ).first()
 
     if lecturer and lecturer.password == data.get('password'):
-        return jsonify({"status": "success", "data": lecturer.to_dict()})
+        # Ambil daftar mata kuliah yang diampu oleh dosen ini
+        courses = Course.query.filter_by(lecturer_id=lecturer.lecturer_id).all()
+        
+        return jsonify({
+            "status": "success", 
+            "id": lecturer.lecturer_id,
+            "name": lecturer.nama, # Ini agar muncul "Ramazan Yilmaz", bukan "admin"
+            "courses": [{"id": c.course_id, "name": c.course_name} for c in courses] # Mengisi dropdown
+        })
 
     return jsonify({"status": "error", "message": "Invalid login"}), 401
 
@@ -240,24 +252,18 @@ def lecturer_login():
 # ================= SESSION =================
 # =========================================================
 
-@app.route('/api/session/create', methods=['POST'])
-def create_session():
+@app.route('/api/session/start', methods=['POST']) # Ubah 'create' jadi 'start'
+def start_session(): # Sesuaikan nama fungsinya
     data = request.get_json()
 
     lecturer_id = data.get('lecturer_id')
-    course_id = data.get('course_id')
+    course_id = data.get('course_id') # Menangkap ID mata kuliah dari dropdown UI
 
     if not lecturer_id or not course_id:
         return jsonify({
             "status": "error",
             "message": "lecturer_id & course_id required"
         }), 400
-
-    lecturer = Lecturer.query.get(lecturer_id)
-    course = Course.query.get(course_id)
-
-    if not lecturer or not course:
-        return jsonify({"status": "error", "message": "Invalid data"}), 404
 
     expires_at = datetime.utcnow() + timedelta(
         minutes=app.config['QR_EXPIRY_MINUTES']
@@ -272,7 +278,7 @@ def create_session():
     db.session.add(session)
     db.session.commit()
 
-    # 🔥 AUTO QR START (GANTI REFRESH MANUAL)
+    # Threading otomatis untuk generate QR per 30 detik
     threading.Thread(
         target=auto_generate_qr,
         args=(session.session_id,)
@@ -282,7 +288,7 @@ def create_session():
         "status": "success",
         "session_id": session.session_id,
         "course_id": course_id
-    })
+    }), 201 # Tambahkan kode 201 (Created)
 
 
 @app.route('/api/session/<int:session_id>/current-qr', methods=['GET'])
@@ -564,6 +570,46 @@ def seed_data():
 def index():
     return jsonify({"status": "connected"})
 
+
+# Import logika dari folder backend yang baru kita buat
+@app.route('/api/stats/student/<nim>', methods=['GET'])
+def api_student_stats(nim):
+    stats = get_student_stats_logic(nim)
+    return jsonify({"status": "success", "data": stats})
+
+@app.route('/api/stats/lecturer/<int:session_id>', methods=['GET'])
+def api_lecturer_stats(session_id):
+    # Kita menangkap dua variabel: stats dan error
+    stats, error = get_lecturer_stats_logic(session_id) 
+    
+    if error:
+        return jsonify({"status": "error", "message": error}), 404
+        
+    return jsonify({"status": "success", "data": stats})
+
+@app.route('/api/report/export/<int:session_id>', methods=['GET'])
+def api_download_report(session_id):
+    filepath, error = export_attendance_to_excel(session_id)
+    if error:
+        return jsonify({"status": "error", "message": error}), 404
+    
+    # Perintah ini akan mengirimkan file Excel langsung ke aplikasi Dosen
+    return send_file(filepath, as_attachment=True)
+
+@app.route('/api/session/<int:session_id>/get-qr', methods=['GET'])
+def get_current_token(session_id):
+    # Ambil token terbaru yang belum expired untuk sesi ini
+    token = QRToken.query.filter_by(session_id=session_id)\
+        .order_by(QRToken.expires_at.desc())\
+        .first()
+
+    if not token:
+        return jsonify({"status": "error", "message": "No active token"}), 404
+
+    return jsonify({
+        "status": "success",
+        "token": token.token
+    })
 
 # ================= RUN =================
 if __name__ == '__main__':
