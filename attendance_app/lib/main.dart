@@ -14,6 +14,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const MaterialApp(
+      debugShowCheckedModeBanner: false,
       home: LoginPage(),
     );
   }
@@ -34,11 +35,13 @@ class _LoginPageState extends State<LoginPage> {
   final TextEditingController nimController = TextEditingController();
 
   void login() {
-    String nim = nimController.text;
+    String nim = nimController.text.trim();
 
     if (nim.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Please enter NIM")),
+        const SnackBar(
+          content: Text("Please enter NIM"),
+        ),
       );
       return;
     }
@@ -46,7 +49,9 @@ class _LoginPageState extends State<LoginPage> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => ScannerPage(studentNim: nim),
+        builder: (context) => ScannerPage(
+          studentNim: nim,
+        ),
       ),
     );
   }
@@ -54,7 +59,9 @@ class _LoginPageState extends State<LoginPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Login")),
+      appBar: AppBar(
+        title: const Text("Login"),
+      ),
       body: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -62,9 +69,13 @@ class _LoginPageState extends State<LoginPage> {
           children: [
             const Text(
               "Enter your NIM",
-              style: TextStyle(fontSize: 18),
+              style: TextStyle(
+                fontSize: 18,
+              ),
             ),
+
             const SizedBox(height: 20),
+
             TextField(
               controller: nimController,
               decoration: const InputDecoration(
@@ -72,7 +83,9 @@ class _LoginPageState extends State<LoginPage> {
                 labelText: "NIM",
               ),
             ),
+
             const SizedBox(height: 20),
+
             ElevatedButton(
               onPressed: login,
               child: const Text("LOGIN"),
@@ -91,7 +104,10 @@ class _LoginPageState extends State<LoginPage> {
 class ScannerPage extends StatefulWidget {
   final String studentNim;
 
-  const ScannerPage({super.key, required this.studentNim});
+  const ScannerPage({
+    super.key,
+    required this.studentNim,
+  });
 
   @override
   State<ScannerPage> createState() => _ScannerPageState();
@@ -104,9 +120,15 @@ class _ScannerPageState extends State<ScannerPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("QR Scanner")),
+      appBar: AppBar(
+        title: const Text("QR Scanner"),
+      ),
       body: Column(
         children: [
+          //////////////////////////////////////////////////
+          // CAMERA SCANNER
+          //////////////////////////////////////////////////
+
           Expanded(
             flex: 4,
             child: MobileScanner(
@@ -128,6 +150,10 @@ class _ScannerPageState extends State<ScannerPage> {
             ),
           ),
 
+          //////////////////////////////////////////////////
+          // RESULT AREA
+          //////////////////////////////////////////////////
+
           Expanded(
             flex: 2,
             child: Column(
@@ -135,50 +161,98 @@ class _ScannerPageState extends State<ScannerPage> {
               children: [
                 Text(
                   "NIM: ${widget.studentNim}",
-                  style: const TextStyle(fontSize: 16),
+                  style: const TextStyle(
+                    fontSize: 16,
+                  ),
                 ),
+
                 const SizedBox(height: 10),
 
                 Text(
                   scannedData,
                   textAlign: TextAlign.center,
                 ),
+
                 const SizedBox(height: 20),
+
+                //////////////////////////////////////////////////
+                // PRESENT BUTTON
+                //////////////////////////////////////////////////
 
                 if (isScanned)
                   ElevatedButton(
                     onPressed: () async {
-                      final url = Uri.parse(
-                          "http://192.168.1.111:5001/api/attendance/scan"); // GANTI IP
+                      try {
+                        final deviceId =
+                            await DeviceService.getDeviceId();
 
-                      final response = await http.post(
-                        url,
-                        headers: {"Content-Type": "application/json"},
-                        body: jsonEncode({
-                          "nim": widget.studentNim,
-                          "token_qr": scannedData
-                        }),
-                      );
+                        final url = Uri.parse(
+                          "http://192.168.1.111:5001/api/attendance/scan",
+                        );
 
-                      final result = jsonDecode(response.body);
+                        final response = await http.post(
+                          url,
+                          headers: {
+                            "Content-Type": "application/json",
+                          },
+                          body: jsonEncode({
+                            "nim": widget.studentNim,
+                            "token_qr": scannedData,
+                            "device_id": deviceId,
+                          }),
+                        );
 
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(result["message"] ?? "No message"),
-                          backgroundColor: result["status"] == "success"
-                              ? Colors.green
-                              : Colors.red,
-                        ),
-                      );
+                        print(
+                          "STATUS CODE: ${response.statusCode}",
+                        );
+
+                        print(
+                          "BODY: ${response.body}",
+                        );
+
+                        final result =
+                            jsonDecode(response.body);
+
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              result["message"] ??
+                                  "No message",
+                            ),
+                            backgroundColor:
+                                result["status"] == "success"
+                                    ? Colors.green
+                                    : Colors.red,
+                          ),
+                        );
+                      } catch (e) {
+                        print("ERROR: $e");
+
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content:
+                                Text("Connection error"),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                      }
                     },
+
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.green,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 40, vertical: 15),
+                      padding:
+                          const EdgeInsets.symmetric(
+                        horizontal: 40,
+                        vertical: 15,
+                      ),
                     ),
+
                     child: const Text(
                       "PRESENT",
-                      style: TextStyle(fontSize: 18, color: Colors.white),
+                      style: TextStyle(
+                        fontSize: 18,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
               ],
