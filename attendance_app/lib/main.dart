@@ -187,7 +187,7 @@ class _ScannerPageState extends State<ScannerPage> {
                             await DeviceService.getDeviceId();
 
                         final url = Uri.parse(
-                          "http://192.168.1.111:5001/api/attendance/scan",
+                          "http://192.168.1.100:5001/api/attendance/scan",
                         );
 
                         final response = await http.post(
