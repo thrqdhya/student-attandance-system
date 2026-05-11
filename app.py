@@ -290,6 +290,20 @@ def start_session(): # Sesuaikan nama fungsinya
         "course_id": course_id
     }), 201 # Tambahkan kode 201 (Created)
 
+@app.route('/api/session/stop', methods=['POST'])
+def stop_session():
+    data = request.get_json()
+    session_id = data.get('session_id')
+    
+    session = Session.query.get(session_id)
+    if session:
+        # Ubah waktu kadaluarsa menjadi "sekarang" agar sesi langsung mati
+        session.expires_at = datetime.utcnow()
+        db.session.commit()
+        return jsonify({"status": "success", "message": "Session stopped"})
+    
+    return jsonify({"status": "error", "message": "Session not found"}), 404
+
 
 @app.route('/api/session/<int:session_id>/current-qr', methods=['GET'])
 def get_current_qr(session_id):
