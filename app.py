@@ -1,3 +1,6 @@
+import pandas as pd
+import os
+import io
 from flask import send_file
 from backend.lecturer import export_attendance_to_excel
 from backend.student import get_student_stats_logic
@@ -461,8 +464,8 @@ def live_attendance(session_id):
         result.append({
             "name": student.nama,
             "nim": student.nim,
-            "time": record.timestamp,
-            "token": record.token
+            "time": record.timestamp 
+            # ❌ Baris "token" dihapus
         })
 
     return jsonify({"status": "success", "data": result})
@@ -601,14 +604,6 @@ def api_lecturer_stats(session_id):
         
     return jsonify({"status": "success", "data": stats})
 
-@app.route('/api/report/export/<int:session_id>', methods=['GET'])
-def api_download_report(session_id):
-    filepath, error = export_attendance_to_excel(session_id)
-    if error:
-        return jsonify({"status": "error", "message": error}), 404
-    
-    # Perintah ini akan mengirimkan file Excel langsung ke aplikasi Dosen
-    return send_file(filepath, as_attachment=True)
 
 @app.route('/api/session/<int:session_id>/get-qr', methods=['GET'])
 def get_current_token(session_id):
@@ -624,6 +619,66 @@ def get_current_token(session_id):
         "status": "success",
         "token": token.token
     })
+
+
+@app.route('/api/report/export/<int:session_id>', methods=['GET'])
+def api_download_report(session_id):
+    try:
+        from database.models import AttendanceRecord, Student, Session, Course
+        from datetime import datetime # Pastikan import ini ada
+        
+        # 1. Ambil data dengan JOIN (Sama seperti sebelumnya)
+        results = db.session.query(AttendanceRecord, Student, Course)\
+            .join(Student, AttendanceRecord.nim == Student.nim)\
+            .join(Session, AttendanceRecord.session_id == Session.session_id)\
+            .join(Course, Session.course_id == Course.course_id)\
+            .filter(AttendanceRecord.session_id == session_id).all()
+            
+        if not results:
+            return {"status": "error", "message": "Belum ada record untuk sesi ini."}, 404
+
+        # 2. Ambil informasi untuk Nama File
+        # Kita ambil dari baris pertama hasil query
+        first_row_course = results[0][2].course_name
+        
+        # Format waktu saat ini: Tanggal-Bulan-Tahun_Jam-Menit
+        waktu_sekarang = datetime.now().strftime("%d-%b-%Y_%H-%M")
+        
+        # Bersihkan nama mata kuliah dari spasi agar nama file tidak rusak
+        nama_matkul_bersih = first_row_course.replace(" ", "_")
+        
+        # Hasilnya akan jadi: Yapay_Zeka_12-May-2026_01-45.xlsx
+        nama_file_final = f"{nama_matkul_bersih}_{waktu_sekarang}.xlsx"
+
+        # 3. Susun data untuk isi Excel
+        data_list = []
+        for record, student, course in results:
+            data_list.append({
+                "Course Name": course.course_name,
+                "Student ID": student.nim,
+                "Student Name": student.nama,
+                "Attendance Status": record.status,
+                "Timestamp": record.timestamp.strftime("%Y-%m-%d %H:%M:%S")
+            })
+
+        # 4. Proses konversi ke Excel
+        df = pd.DataFrame(data_list)
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='Laporan Absensi')
+        output.seek(0)
+
+        # 5. Kirim file dengan nama file baru yang keren
+        return send_file(
+            output,
+            as_attachment=True,
+            download_name=nama_file_final, # 🔥 Nama file dinamis
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+
+    except Exception as e:
+        print(f"🔥 ERROR EXPORT: {str(e)}")
+        return {"status": "error", "message": str(e)}, 500
 
 # ================= RUN =================
 if __name__ == '__main__':
