@@ -492,28 +492,33 @@ class LecturerApp(QMainWindow):
                 self.btn_stop.show()
                 self.btn_export.show()
 
-                self.qr_timer = QTimer()
+                # 🔥 PERBAIKAN: Menambahkan (self) pada QTimer
+                self.qr_timer = QTimer(self)
                 self.qr_timer.timeout.connect(self.fetch_qr)
-                self.qr_timer.start(30000) 
+                self.qr_timer.start(2000) 
 
-                self.stats_timer = QTimer()
+                # 🔥 PERBAIKAN: Menambahkan (self) pada QTimer
+                self.stats_timer = QTimer(self)
                 self.stats_timer.timeout.connect(self.refresh_stats)
-                self.stats_timer.start(3000) # Dipercepat agar UI terasa instan
+                self.stats_timer.start(3000) 
 
                 self.remaining_seconds = 300 
                 self.progress_bar.setValue(300)
                 self.lbl_session_clock.setText("05:00")
                 self.lbl_session_clock.setStyleSheet("font-size: 42px; font-weight: 700; color: #334155; font-family: 'Consolas', monospace;")
                 
-                self.clock_timer = QTimer()
+                # 🔥 PERBAIKAN: Menambahkan (self) pada QTimer
+                self.clock_timer = QTimer(self)
                 self.clock_timer.timeout.connect(self.update_clock)
                 self.clock_timer.start(1000)
                 
                 self.qr_display.setObjectName("")
                 self.qr_display.setStyleSheet("")
                 
+                # Fetch QR pertama kali setelah 1 detik
                 QTimer.singleShot(1000, self.fetch_qr) 
-        except:
+        except Exception as e:
+            print(f"Error starting session: {e}")
             QMessageBox.warning(self, "Error", "Failed to start")
 
     def stop_attendance_session(self):
@@ -553,17 +558,42 @@ class LecturerApp(QMainWindow):
 
     def fetch_qr(self):
         try:
-            res = requests.get(f"{BASE_URL}/api/session/{self.session_id}/current-qr")
+            # Gunakan timestamp agar tidak kena cache jaringan
+            timestamp = int(time.time()) 
+            res = requests.get(f"{BASE_URL}/api/session/{self.session_id}/current-qr?t={timestamp}")
+            
             if res.status_code == 200:
                 token_str = res.json().get('token')
-                qr_img = qrcode.make(token_str)
-                buf = BytesIO()
-                qr_img.save(buf, format="PNG")
                 
-                qimage = QImage.fromData(buf.getvalue())
-                pixmap = QPixmap.fromImage(qimage).scaled(400, 400, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-                self.qr_display.setPixmap(pixmap)
-        except: pass
+                # Hanya update jika tokennya memang baru
+                if not hasattr(self, 'current_display_token') or self.current_display_token != token_str:
+                    qr_img = qrcode.make(token_str)
+                    buf = BytesIO()
+                    qr_img.save(buf, format="PNG")
+                    
+                    qimage = QImage.fromData(buf.getvalue())
+                    pixmap = QPixmap.fromImage(qimage).scaled(400, 400, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                    
+                    # Update Gambar
+                    self.qr_display.setPixmap(pixmap)
+                    self.qr_display.repaint() # 👈 Memaksa UI menggambar ulang
+                    
+                    self.current_display_token = token_str
+                    print(f"🔄 QR Updated to: {token_str}")
+
+                    # ✨ EFEK VISUAL: Ubah status sebentar agar kita tahu QR baru masuk
+                    original_status = self.lbl_status.text()
+                    self.lbl_status.setText("✨ NEW QR GENERATED")
+                    self.lbl_status.setStyleSheet("font-size: 16px; color: #10B981; font-weight: bold;") # Warna Hijau
+                    
+                    # Kembalikan ke status awal setelah 2 detik
+                    QTimer.singleShot(2000, lambda: self.reset_status_label(original_status))
+        except Exception as e:
+            print(f"🔥 Error fetch QR: {e}")
+
+    def reset_status_label(self, text):
+        self.lbl_status.setText(text)
+        self.lbl_status.setStyleSheet("font-size: 16px; color: #EF4444; font-weight: bold; letter-spacing: 0.5px;")
 
     # 🔥 LOGIKA PINTAR - TARIK NAMA & DESAIN ESTETIK
     def refresh_stats(self):
