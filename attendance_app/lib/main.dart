@@ -4,6 +4,8 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'device_service.dart';
 
+const String BASE_URL = "http://10.87.18.215:5001";
+
 void main() {
   runApp(const MyApp());
 }
@@ -48,10 +50,7 @@ class _LoginPageState extends State<LoginPage> {
 
     if (name.isEmpty || nim.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Please enter both Full Name and Student Number"),
-          backgroundColor: Colors.redAccent,
-        ),
+        const SnackBar(content: Text("Please enter both Full Name and Student Number"), backgroundColor: Colors.redAccent),
       );
       return;
     }
@@ -59,44 +58,31 @@ class _LoginPageState extends State<LoginPage> {
     setState(() => isLoading = true);
 
     try {
-      final url = Uri.parse("http://192.168.1.105:5001/api/student/login");
+      // 🔥 Sekarang pakai variabel BASE_URL
+      final url = Uri.parse("$BASE_URL/api/student/login");
       final response = await http.post(
         url,
         headers: {"Content-Type": "application/json"},
-        body: jsonEncode({"nim": nim}), // Backend kita hanya butuh NIM untuk cek DB
+        body: jsonEncode({"nim": nim}),
       );
+
+      if (!mounted) return; // ✅ Mencegah crash jika user pindah halaman
 
       if (response.statusCode == 200) {
         final result = jsonDecode(response.body);
-        final studentData = result['data'];
-
-        // Jika berhasil, pindah ke halaman Dashboard dengan membawa data
-        if (mounted) {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-              builder: (context) => DashboardPage(
-                studentData: studentData,
-              ),
-            ),
-          );
-        }
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => DashboardPage(studentData: result['data'])),
+        );
       } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text("Student not found in database!"),
-              backgroundColor: Colors.redAccent,
-            ),
-          );
-        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Student not found!"), backgroundColor: Colors.redAccent),
+        );
       }
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Connection error to server"),
-          backgroundColor: Colors.redAccent,
-        ),
+        const SnackBar(content: Text("Connection error to server"), backgroundColor: Colors.redAccent),
       );
     } finally {
       if (mounted) setState(() => isLoading = false);
@@ -422,33 +408,45 @@ class _ScannerPageState extends State<ScannerPage> {
                     height: 55,
                     child: ElevatedButton(
                       onPressed: isScanned
-                          ? () async {
-                              try {
-                                final deviceId = await DeviceService.getDeviceId();
-                                final url = Uri.parse("http://192.168.1.105:5001/api/attendance/scan");
+    ? () async {
+        try {
+          final deviceId = await DeviceService.getDeviceId();
+          // 🔥 PAKAI BASE_URL GLOBAL
+          final url = Uri.parse("$BASE_URL/api/attendance/scan");
 
-                                final response = await http.post(
-                                  url,
-                                  headers: {"Content-Type": "application/json"},
-                                  body: jsonEncode({"nim": widget.studentNim, "token_qr": scannedData, "device_id": deviceId}),
-                                );
+          final response = await http.post(
+            url,
+            headers: {"Content-Type": "application/json"},
+            body: jsonEncode({
+              "nim": widget.studentNim, 
+              "token_qr": scannedData, 
+              "device_id": deviceId
+            }),
+          );
 
-                                final result = jsonDecode(response.body);
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(result["message"] ?? "No message"),
-                                    backgroundColor: result["status"] == "success" ? Colors.green : Colors.red,
-                                  ),
-                                );
-                                
-                                if(result["status"] == "success") {
-                                  Navigator.pop(context); // Kembali ke dashboard jika sukses
-                                }
-                              } catch (e) {
-                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Connection error"), backgroundColor: Colors.red));
-                              }
-                            }
-                          : null,
+          // 🔥 CEK APAKAH WIDGET MASIH ADA (Mencegah Crash)
+          if (!mounted) return;
+
+          final result = jsonDecode(response.body);
+          
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(result["message"] ?? "No message"),
+              backgroundColor: result["status"] == "success" ? Colors.green : Colors.red,
+            ),
+          );
+          
+          if(result["status"] == "success") {
+            Navigator.pop(context); 
+          }
+        } catch (e) {
+          if (!mounted) return; // 🔥 Cegah crash saat error koneksi
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Connection error"), backgroundColor: Colors.red)
+          );
+        }
+      }
+    : null,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF10B981),
                         disabledBackgroundColor: const Color(0xFFE2E8F0),

@@ -330,109 +330,60 @@ def get_current_qr(session_id):
 @app.route('/api/attendance/scan', methods=['POST'])
 def scan_attendance():
     data = request.get_json()
+    print(f"📩 DATA MASUK DARI HP: {data}") # DEBUG: Cek apakah data sampai
 
     nim = data.get('nim')
     token_str = data.get('token_qr')
     device_id = data.get('device_id')
 
-    # =========================
-    # 📥 VALIDASI INPUT
-    # =========================
     if not nim or not token_str or not device_id:
-        return jsonify({
-            "status": "error",
-            "message": "NIM, token, and device_id required"
-        }), 400
+        return jsonify({"status": "error", "message": "NIM, token, and device_id required"}), 400
 
-    student = Student.query.get(nim)
+    # Gunakan db.session.get(Student, nim) untuk menghindari warning Legacy
+    student = db.session.get(Student, nim)
     if not student:
-        return jsonify({"status": "error"}), 404
+        print(f"❌ Mahasiswa dengan NIM {nim} tidak ada di DB")
+        return jsonify({"status": "error", "message": "Student not found"}), 404
 
     # =========================
-    # 📱 DEVICE LOCK
+    # 📱 DEVICE LOCK (MODIFIKASI DEMO)
     # =========================
     if not student.device_id:
-        # pertama kali → simpan device
         student.device_id = device_id
         db.session.commit()
-
+        print(f"📱 Device ID baru didaftarkan untuk NIM {nim}")
     elif student.device_id != device_id:
-        # device beda → kemungkinan curang
-        return jsonify({
-            "status": "error",
-            "message": "Device mismatch (use your registered device)"
-        }), 403
+        print(f"⚠️ Device Mismatch! DB: {student.device_id}, Scan: {device_id}")
+        # UNTUK DEMO: Jika ingin mematikan proteksi device, matikan baris di bawah ini:
+        return jsonify({"status": "error", "message": "Device mismatch"}), 403
 
     # =========================
-    # 🔐 VALIDASI QR (COMBINED)
+    # 🔐 VALIDASI QR
     # =========================
-
     qr_token = QRToken.query.filter_by(token=token_str).first()
 
     if not qr_token:
-        return jsonify({
-            "status": "error",
-            "message": "QR not found"
-        }), 400
+        print(f"❌ Token {token_str} tidak ditemukan di database")
+        return jsonify({"status": "error", "message": "QR not found"}), 400
 
-    if not qr_token.is_valid():
-        return jsonify({
-            "status": "error",
-            "message": "QR expired (DB)"
-        }), 400
-
-    from qr_engine.token_generator import validate_token
-    if not validate_token(token_str):
-        return jsonify({
-            "status": "error",
-            "message": "QR invalid (tampered / outdated)"
-        }), 400
+    # Gunakan datetime.now() karena utcnow() sudah deprecated
+    if qr_token.expires_at < datetime.utcnow():
+        print(f"⏰ Token sudah kadaluarsa")
+        return jsonify({"status": "error", "message": "QR expired"}), 400
 
     # =========================
     # 📚 VALIDASI SESSION
     # =========================
-
-    session = Session.query.get(qr_token.session_id)
-
-    if not session or not session.is_active():
-        return jsonify({
-            "status": "error",
-            "message": "Session expired"
-        }), 400
-
-    # =========================
-    # 🎓 VALIDASI COURSE
-    # =========================
-
-    student_course = StudentCourse.query.filter_by(
-        student_nim=nim,
-        course_id=session.course_id
-    ).first()
-
-    if not student_course:
-        return jsonify({
-            "status": "error",
-            "message": "Not enrolled"
-        }), 403
-
-    # =========================
-    # 🚫 CEK DOUBLE ABSEN
-    # =========================
-
-    existing = AttendanceRecord.query.filter_by(
-        nim=nim,
-        session_id=session.session_id
-    ).first()
-
-    if existing:
-        return jsonify({
-            "status": "error",
-            "message": "Already attended"
-        }), 400
+    session = db.session.get(Session, qr_token.session_id)
+    if not session or session.expires_at < datetime.utcnow():
+        return jsonify({"status": "error", "message": "Session expired"}), 400
 
     # =========================
     # ✅ SIMPAN ABSENSI
     # =========================
+    existing = AttendanceRecord.query.filter_by(nim=nim, session_id=session.session_id).first()
+    if existing:
+        return jsonify({"status": "error", "message": "Already attended"}), 400
 
     attendance = AttendanceRecord(
         nim=nim,
@@ -442,11 +393,9 @@ def scan_attendance():
 
     db.session.add(attendance)
     db.session.commit()
+    print(f"✅ ABSEN BERHASIL: {student.nama} ({nim})")
 
-    return jsonify({
-        "status": "success",
-        "message": "Attendance recorded"
-    })
+    return jsonify({"status": "success", "message": "Attendance recorded"})
 
 # =========================================================
 # ================= LIVE DATA =================

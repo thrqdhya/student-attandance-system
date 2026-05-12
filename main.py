@@ -1,6 +1,6 @@
 import requests
 
-BASE_URL = "http://192.168.1.106:5001"  # 🔥 pakai IP kamu
+BASE_URL = "http://10.87.18.215:5001"  # 🔥 pakai IP kamu
 
 def main():
     # 1. ambil QR terbaru

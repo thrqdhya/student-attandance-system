@@ -13,7 +13,7 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QPixmap, QImage, QColor
 
 # CONFIG: Port 5001 sesuai app.py
-BASE_URL = "http://127.0.0.1:5001"
+BASE_URL = "http://10.87.18.215:5001"
 
 class LecturerApp(QMainWindow):
     def __init__(self):
